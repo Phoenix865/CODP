@@ -1,0 +1,8 @@
+# CODP requirements
+# Usage: pip install -r requirements.txt
+
+# Base ----------------------------------------
+opencv-python>=4.9.0.80
+numpy>=1.26.4
+pillow>=10.3.0
+moviepy>=1.0.3
