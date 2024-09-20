@@ -155,73 +155,254 @@ def convert_txt_to_xml(yolo_labels_dir, xml_labels_dir, image_width, image_heigh
 
 
 # 5.用于将xml格式标签转换为txt格式
-def extract_coordinates(xml_path, w, h):
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
+def convert_xml_to_txt(xml_folder, txt_folder, classes):
+    if not os.path.exists(txt_folder):
+        os.makedirs(txt_folder)
 
-    coordinates = []
+    for xml_file in os.listdir(xml_folder):
+        if xml_file.endswith('.xml'):
+            xml_path = os.path.join(xml_folder, xml_file)
+            try:
+                tree = ET.parse(xml_path)
+                root = tree.getroot()
 
-    for obj in root.findall('.//object'):
-        name = obj.find('name').text
-        bndbox = obj.find('bndbox')
-        xmin = bndbox.find('xmin').text
-        ymin = bndbox.find('ymin').text
-        xmax = bndbox.find('xmax').text
-        ymax = bndbox.find('ymax').text
+                image_width = int(root.find('size/width').text)
+                image_height = int(root.find('size/height').text)
 
-        if name == "bus":
-            classify = 0
-        elif name == "van":
-            classify = 1
-        elif name == "car":
-            classify = 2
-        else:
-            continue
-        xmin = int(xmin)
-        xmax = int(xmax)
-        ymin = int(ymin)
-        ymax = int(ymax)
-        cx = round((xmin + (xmax - xmin) / 2) / w, 3)
-        cy = round((ymin + (ymax - ymin) / 2) / h, 3)
-        w1 = round((xmax - xmin) / w, 3)
-        h1 = round((ymax - ymin) / h, 3)
+                if image_width == 0 or image_height == 0:
+                    print(f'Error processing {xml_file}: Image width or height is zero')
+                    continue
 
-        coordinates.append((f'{classify}', f'{cx}', f'{cy}', f'{w1}', f'{h1}'))
+                txt_filename = os.path.splitext(xml_file)[0] + '.txt'
+                txt_path = os.path.join(txt_folder, txt_filename)
 
-    return coordinates
+                with open(txt_path, 'w') as txt_file:
+                    for obj in root.findall('object'):
+                        class_name = obj.find('name').text
+                        if class_name not in classes:
+                            continue
+                        class_id = classes.index(class_name)
+
+                        bndbox = obj.find('bndbox')
+                        xmin = float(bndbox.find('xmin').text)
+                        ymin = float(bndbox.find('ymin').text)
+                        xmax = float(bndbox.find('xmax').text)
+                        ymax = float(bndbox.find('ymax').text)
+
+                        center_x = (xmin + xmax) / 2.0 / image_width
+                        center_y = (ymin + ymax) / 2.0 / image_height
+                        width = (xmax - xmin) / image_width
+                        height = (ymax - ymin) / image_height
+
+                        txt_file.write(f'{class_id} {center_x:.6f} {center_y:.6f} {width:.6f} {height:.6f}\n')
+
+                print(f'Processed {xml_file}')
+
+            except (ET.ParseError, AttributeError, TypeError, ValueError) as e:
+                print(f'Error processing {xml_file}: {e}')
+                continue
 
 
-def convert_xml_to_txt(input_folder, output_folder, w, h):
-    # 确保输出文件夹存在，如果不存在则创建
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+# 6.用于删除内容为空的txt格式标签
+def delete_empty_txt_files(folder):
+    for txt_file in os.listdir(folder):
+        if txt_file.endswith('.txt'):
+            txt_path = os.path.join(folder, txt_file)
+            try:
+                if os.path.getsize(txt_path) == 0:
+                    os.remove(txt_path)
+                    print(f'Deleted empty file: {txt_file}')
+            except Exception as e:
+                print(f'Error processing {txt_file}: {e}')
 
-    for filename in os.listdir(input_folder):
-        if filename.endswith('.xml'):
-            xml_path = os.path.join(input_folder, filename)
-            coordinates = extract_coordinates(xml_path, w, h)
 
-            # 创建对应的TXT文件
-            txt_filename = os.path.splitext(filename)[0] + '.txt'
-            txt_path = os.path.join(output_folder, txt_filename)
+# 7.用于修改txt格式标签类别序号
+def process_txt_files(folder, target_char, replace_char):
+    for txt_file in os.listdir(folder):
+        if txt_file.endswith('.txt'):
+            txt_path = os.path.join(folder, txt_file)
+            try:
+                with open(txt_path, 'r') as file:
+                    lines = file.readlines()
 
-            # 将坐标信息写入TXT文件
-            with open(txt_path, 'w') as txt_file:
-                for coord in coordinates:
-                    txt_file.write(' '.join(coord) + '\n')
-                    print(f"Converted {filename} to {txt_filename}")
+                modified_lines = []
+                modified = False
+                for line in lines:
+                    if line.strip() and line[0] == target_char:
+                        modified_lines.append(replace_char + line[1:])
+                        modified = True
+                    else:
+                        modified_lines.append(line)
+
+                if modified:
+                    with open(txt_path, 'w') as file:
+                        file.writelines(modified_lines)
+
+                print(f'Processed {txt_file}')
+
+            except Exception as e:
+                print(f'Error processing {txt_file}: {e}')
+
+
+# 8.用于修改文件名
+def rename_files_in_folder(folder, suffix):
+    for filename in os.listdir(folder):
+        # 获取文件的完整路径
+        old_file_path = os.path.join(folder, filename)
+
+        # 检查是否为文件（排除文件夹）
+        if os.path.isfile(old_file_path):
+            # 分离文件名和扩展名
+            name, ext = os.path.splitext(filename)
+            # 创建新的文件名
+            new_filename = f"{name}{suffix}{ext}"
+            # 获取新的文件路径
+            new_file_path = os.path.join(folder, new_filename)
+
+            # 重命名文件
+            os.rename(old_file_path, new_file_path)
+            print(f"Renamed {filename} to {new_filename}")
+
+
+# 9.用于删除txt格式标签里指定类别
+def process_txt_files2(folder, target_chars):
+    for txt_file in os.listdir(folder):
+        if txt_file.endswith('.txt'):
+            txt_path = os.path.join(folder, txt_file)
+            try:
+                with open(txt_path, 'r') as file:
+                    lines = file.readlines()
+
+                modified_lines = [line for line in lines if not (line.strip() and line[0] == target_chars)]
+
+                with open(txt_path, 'w') as file:
+                    file.writelines(modified_lines)
+
+                print(f'Processed {txt_file}')
+
+            except Exception as e:
+                print(f'Error processing {txt_file}: {e}')
+
+
+# 10.用于删除文件夹里指定类型的文件
+def delete_files_of_type(folder_path, file_extension):
+    """
+    删除指定文件夹中的所有指定类型的文件。
+
+    Parameters:
+        folder_path (str): 目标文件夹的路径。
+        file_extension (str): 要删除的文件类型（扩展名），例如'.xml'。
+    """
+    # 遍历文件夹中的所有文件
+    for file in os.listdir(folder_path):
+        # 检查文件是否是指定类型的文件
+        if file.endswith(file_extension):
+            # 构建文件的完整路径
+            file_path = os.path.join(folder_path, file)
+            # 删除文件
+            os.remove(file_path)
+            print(f"Deleted {file}")
+
+
+# 11.用于删除除指定编号以外的类别
+def process_txt_files3(folder, target_chars):
+    for txt_file in os.listdir(folder):
+        if txt_file.endswith('.txt'):
+            txt_path = os.path.join(folder, txt_file)
+            try:
+                with open(txt_path, 'r') as file:
+                    lines = file.readlines()
+
+                # 修改条件，保留以 target_chars 中任意一个字符开头的行
+                modified_lines = [line for line in lines if line.strip() and line[0] in target_chars]
+
+                with open(txt_path, 'w') as file:
+                    file.writelines(modified_lines)
+
+                print(f'Processed {txt_file}')
+
+            except Exception as e:
+                print(f'Error processing {txt_file}: {e}')
+
+
+# 12.用于将当前文件夹里的标签内容添加到另一个文件夹的标签
+def append_txt_files(src_folder, dest_folder, dest_file=None):
+    for src_file in os.listdir(src_folder):
+        if src_file.endswith('.txt'):
+            src_path = os.path.join(src_folder, src_file)
+            dest_path = os.path.join(dest_folder, src_file)
+
+            if os.path.exists(dest_path):
+                try:
+                    with open(src_path, 'r') as file:
+                        lines = file.readlines()
+
+                    with open(dest_path, 'a') as file:
+                        for line in lines:
+                            file.write(line)
+
+                    print(f'Appended content from {src_file} to {dest_file}')
+
+                except Exception as e:
+                    print(f'Error processing {src_file}: {e}')
+            else:
+                print(f'Skipped {src_file}, no matching file in destination folder')
+
+
+# 13.用于将当前文件夹里的标签内容指定编号交换顺序
+def swap_content_by_prefix(folder, target_chars):
+    for txt_file in os.listdir(folder):
+        if txt_file.endswith('.txt'):
+            txt_path = os.path.join(folder, txt_file)
+            try:
+                with open(txt_path, 'r') as file:
+                    lines = file.readlines()
+
+                modified_lines = []
+
+                # 临时存储两个编号的内容
+                content_a, content_b = None, None
+
+                # 遍历每一行，寻找指定编号开头的行
+                for line in lines:
+                    stripped_line = line.strip()  # 去除前后空白字符
+                    if stripped_line and stripped_line[0] == target_chars[0]:
+                        content_a = stripped_line[1:].strip()  # 保存第一个编号后的内容
+                    elif stripped_line and stripped_line[0] == target_chars[1]:
+                        content_b = stripped_line[1:].strip()  # 保存第二个编号后的内容
+
+                    # 当找到两个编号的内容后，交换它们
+                    if content_a is not None and content_b is not None:
+                        # 重写行，保持编号不变，但交换后面的内容
+                        for i, line in enumerate(lines):
+                            if line.startswith(target_chars[0]):
+                                modified_lines.append(f'{target_chars[0]} {content_b}\n')
+                            elif line.startswith(target_chars[1]):
+                                modified_lines.append(f'{target_chars[1]} {content_a}\n')
+                            else:
+                                modified_lines.append(line)
+                        break  # 一旦交换完成，停止处理
+
+                # 将修改后的行写回文件
+                with open(txt_path, 'w') as file:
+                    file.writelines(modified_lines)
+
+                print(f'Processed and swapped content in {txt_file}')
+
+            except Exception as e:
+                print(f'Error processing {txt_file}: {e}')
 
 
 if __name__ == "__main__":
     # 传入文件夹路径调用函数进行统计
-    txt_folder_path = r"path/to/txt/input"
-    txt_save_path = r"path/to/txt/output"
-    xml_folder_path = r"path/to/xml/input"
-    xml_save_path = r"path/to/xml/output"
-    image_folder_path = r"path/to/image/intput"
-    image_save_path = r"path/to/image/output"
+    txt_folder_path = 'path/to/your_files'
+    txt_save_path = 'path/to/your_files'
+    xml_folder_path = 'path/to/your_files'
+    xml_save_path = 'path/to/your_files'
+    image_folder_path = 'path/to/your_files'
+    image_save_path = 'path/to/your_files'
 
-    count_starting_numbers(txt_folder_path, image_folder_path, image_save_path, txt_save_path)
+    # count_starting_numbers(txt_folder_path, image_folder_path, image_save_path, txt_save_path)
 
     # prefix_length = 17  # 可以根据需要修改第几位开始的字符的长度
     # rename_txt_files(txt_folder_path, txt_save_path, prefix_length)
@@ -233,4 +414,33 @@ if __name__ == "__main__":
 
     # convert_txt_to_xml(txt_folder_path, xml_save_path, width, height)
 
-    # convert_xml_to_txt(xml_folder_path, txt_save_path, width, height)
+    classes = ['people', 'vest', 'boot', 'glove', 'hat']  # 将实际的类别替换为相应的类别名称
+    # convert_xml_to_txt(xml_folder_path, txt_save_path, classes)
+
+    # delete_empty_txt_files(txt_folder_path)
+
+    # 需要被更改的字符
+    target_char = '2'
+    # 要被修改成的字符
+    replace_char = '5'
+    # process_txt_files(txt_folder_path, target_char, replace_char)
+
+    # 自定义的后缀
+    suffix = '_a'
+    # rename_files_in_folder(image_folder_path, suffix)
+
+    # 要删除的字符
+    target_char2 = '1'
+    # process_txt_files2(txt_folder_path, target_char2)
+
+    file_extension = '.xml'  # 你可以将其修改为任何需要的文件类型
+    # delete_files_of_type(txt_folder_path, file_extension)
+
+    # 要保留的字符
+    target_char3 = '0'
+    # process_txt_files3(txt_folder_path, target_char3)
+
+    # append_txt_files(txt_folder_path, txt_save_path)
+
+    target_char4 = '0', '1'
+    # swap_content_by_prefix(txt_folder_path, target_char4)

@@ -33,7 +33,7 @@ def rename_img_files2(folder_path, base_name, start_index=1):
         # 仅处理图片文件
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
             # 构建新的文件名
-            new_filename = f"{base_name}_{start_index + idx:03d}{os.path.splitext(filename)[1]}"
+            new_filename = f"{base_name}_{start_index + idx:04d}{os.path.splitext(filename)[1]}"
             # 生成新的文件路径
             new_filepath = os.path.join(folder_path, new_filename)
             # 旧的文件路径
@@ -55,7 +55,7 @@ def convert_to_jpg(input_folder, output_folder):
 
         # 确保文件是图片文件
         if os.path.isfile(filepath) and any(
-                filename.lower().endswith(ext) for ext in ['.png', '.jpeg', '.gif', '.bmp', '.jpg', '.JPG']):
+                filename.lower().endswith(ext) for ext in ['.png', '.jpeg', '.gif', '.bmp', '.jpg', '.JPG', 'jfif']):
             try:
                 # 打开图像文件
                 with Image.open(filepath) as img:
@@ -76,20 +76,27 @@ def delete_jpg_without_txt(jpg_folder, txt_folder):
         jpg_folder (str): jpg文件夹的路径。
         txt_folder (str): txt文件夹的路径。
     """
-    # 遍历jpg文件夹中的文件
-    for jpg_file in os.listdir(jpg_folder):
-        if jpg_file.endswith('.jpg'):
-            # 提取jpg文件名
-            jpg_name = os.path.splitext(jpg_file)[0]
+    # 定义常见的图片文件扩展名
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif'}
+
+    # 遍历图片文件夹中的文件
+    for image_file in os.listdir(jpg_folder):
+        # 提取文件扩展名
+        file_extension = os.path.splitext(image_file)[1].lower()
+
+        # 检查文件是否是图片
+        if file_extension in image_extensions:
+            # 提取图片文件名
+            image_name = os.path.splitext(image_file)[0]
 
             # 构建对应的txt文件路径
-            txt_file = os.path.join(txt_folder, jpg_name + '.txt')
+            txt_file = os.path.join(txt_folder, image_name + '.txt')
 
-            # 如果txt文件不存在，则删除jpg文件
+            # 如果txt文件不存在，则删除图片文件
             if not os.path.exists(txt_file):
-                jpg_path = os.path.join(jpg_folder, jpg_file)
-                os.remove(jpg_path)
-                print(f"Deleted {jpg_file} because corresponding .txt file doesn't exist.")
+                image_path = os.path.join(jpg_folder, image_file)
+                os.remove(image_path)
+                print(f"Deleted {image_file} because corresponding .txt file doesn't exist.")
 
 
 # 5.用于删除数据集里没有对应图片的标签
@@ -413,21 +420,83 @@ def rotate_images(input_folder, output_folder, rotation_angle):
             img.close()
 
 
+# 13.用于将文件夹里的文件名自定义扩充
+def rename_files_in_folder(folder, suffix):
+    for filename in os.listdir(folder):
+        # 获取文件的完整路径
+        old_file_path = os.path.join(folder, filename)
+
+        # 检查是否为文件（排除文件夹）
+        if os.path.isfile(old_file_path):
+            # 分离文件名和扩展名
+            name, ext = os.path.splitext(filename)
+            # 创建新的文件名
+            new_filename = f"{name}{suffix}{ext}"
+            # 获取新的文件路径
+            new_file_path = os.path.join(folder, new_filename)
+
+            # 重命名文件
+            os.rename(old_file_path, new_file_path)
+            print(f"Renamed {filename} to {new_filename}")
+
+
+# 14.用于将文件夹里的图片缩放指定倍数
+def resize_images_with_padding(input_folder, output_folder, scale_factor):
+    # 确保输出文件夹存在，如果不存在则创建
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    for img_file in os.listdir(input_folder):
+        if img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            input_img_path = os.path.join(input_folder, img_file)
+            output_img_path = os.path.join(output_folder, img_file)
+
+            try:
+                with Image.open(input_img_path) as img:
+                    # 获取原始图像尺寸
+                    original_width, original_height = img.size
+
+                    # 计算新的宽度和高度，保持比例
+                    new_width = int(original_width * scale_factor)
+                    new_height = int(original_height * scale_factor)
+
+                    # 使用 LANCZOS 进行高质量的缩放
+                    resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                    # 创建一个黑色背景的新图像，尺寸与原图像一致
+                    new_img = Image.new('RGB', (original_width, original_height), (0, 0, 0))
+
+                    # 计算图像居中显示的坐标
+                    x_offset = (original_width - new_width) // 2
+                    y_offset = (original_height - new_height) // 2
+
+                    # 将缩放后的图像粘贴到黑色背景上
+                    new_img.paste(resized_img, (x_offset, y_offset))
+
+                    # 将处理后的图片保存到输出文件夹
+                    new_img.save(output_img_path)
+
+                    print(f'Resized and padded {img_file}, saved to {output_img_path}')
+
+            except Exception as e:
+                print(f'Error processing {img_file}: {e}')
+
+
 if __name__ == "__main__":
     # 调用函数并传入文件夹路径
-    xml_input_folder = 'path/to/xml_files'
-    xml_output_folder = 'path/to/xml_files'
-    txt_input_folder = r'path/to/txt_files'
-    txt_output_folder = 'path/to/txt_files'
-    jpg_input_folder = r'path/to/img_files'
-    jpg_output_folder = r'path/to/img_files'
+    xml_input_folder = 'path/to/your_files'
+    xml_output_folder = 'path/to/your_files'
+    txt_input_folder = 'path/to/your_files'
+    txt_output_folder = 'path/to/your_files'
+    jpg_input_folder = 'path/to/your_files'
+    jpg_output_folder = 'path/to/your_files'
 
-    # prefix_length = 17  # 可以根据需要修改第几位开始的字符的长度
+    prefix_length = 17  # 可以根据需要修改第几位开始的字符的长度
     # rename_img_files(jpg_input_folder, jpg_output_folder, prefix_length)
 
-    base_name = "IMG_20240416"  # 基础名称
-    start_index = 377  # 起始索引
-    # rename_img_files2(jpg_input_folder, base_name, start_index)
+    base_name = "people"  # 基础名称
+    start_index = 17220  # 起始索引
+    # rename_img_files2(jpg_output_folder, base_name, start_index)
 
     # convert_to_jpg(jpg_input_folder, jpg_output_folder)
 
@@ -436,10 +505,10 @@ if __name__ == "__main__":
 
     # mirror_images(jpg_input_folder, jpg_output_folder)
 
-    split_percentage = 0.3  # 设置分割百分比
+    split_percentage = 0.25  # 设置分割百分比
     # split_files(jpg_input_folder, txt_input_folder, jpg_output_folder, txt_output_folder, split_percentage)  # 分割文件
 
-    target_resolution = (1920, 1080)  # 指定图片缩放像素
+    target_resolution = (4640, 3488)  # 指定图片缩放像素
     fill_color = (0, 0, 0)  # 指定目标分辨率和填充颜色，黑色
     # resize_and_pad_images(jpg_input_folder, jpg_output_folder, target_resolution, fill_color)
 
@@ -449,9 +518,15 @@ if __name__ == "__main__":
 
     # crop_objects_xml(xml_input_folder, jpg_input_folder, jpg_output_folder)
 
-    angle = 90  # Specify the angle of rotation
-    direction = 'right'  # Specify the direction of rotation ('left' or 'right')
+    angle = 13  # Specify the angle of rotation
+    direction = 'left'  # Specify the direction of rotation ('left' or 'right')
     # rotate_and_crop_images(jpg_input_folder, jpg_output_folder, angle, direction)
 
     rotation_angle = -90  # 指定旋转的角度（顺时针为正，逆时针为负）
     # rotate_images(jpg_input_folder, jpg_output_folder, rotation_angle)
+
+    suffix = 'a'
+    # rename_files_in_folder(jpg_input_folder, suffix)
+
+    scale = 0.8
+    resize_images_with_padding(jpg_input_folder, jpg_output_folder, scale)
